@@ -1,6 +1,8 @@
 import gi
 import tkinter as tk
 from tkinter import filedialog
+import subprocess
+import sys
 gi.require_version('Gtk', '3.0')
 gi.require_version('Gst', '1.0')
 from gi.repository import Gtk, Gst, GdkX11
@@ -20,16 +22,14 @@ class VideoPlayer:
         self.play_button=tk.Button(root,text="Play Video",command=self.play_video)
         self.play_button.pack(pady=10)
 
-        self.video_widget=Gtk.DrawingArea()
-        self.video_widget.set_size_requests(1800,1600)
+        self.stream_button = tk.Button(root, text="Start RTSP Stream", command=self.start_rtsp)
+        self.stream_button.pack(pady=10)
 
-        self.gtk_window=Gtk.window()
-        self.gtk_window.set_default_size(1800,1600)
-        self.gtk_window.set_child(self.video_widget)
-        self.gtk_window.present()
-        
-        # Create GStreamer pipeline
-        self.pipeline = Gst.ElementFactory.make("playbin","play_pipeline")
+        self.stop_stream_button = tk.Button(root, text="Stop RTSP Stream", command=self.stop_rtsp)
+        self.stop_stream_button.pack(pady=10)
+
+        self.rtsp_process = None
+        self.pipeline = None
 
         def browse_file(self):
             file_path = filedialog.askopenfilename(title="Select Video File",filetypes=[("Video Files", "*.mp4;*.avi;*.mkv")])
@@ -39,21 +39,33 @@ class VideoPlayer:
         
         def play_video(self):
             file_path= self.entry.get()
-            if file_path:
-                if file_path.startswith(("https://","http://","rtsp://")):
-                    self.pipeline=Gst.parse_launch(f" playbin uri={file_path}")
-                elif file_path.startswith(("udp://")):
-                    self.pipeline=Gst.parse_launch(f"udpsrc uri={file_path}!decodebin!videoconvert!autovideosink")
-                else:
-                    self.pipeline=Gst.parse_launch(f" playbin uri=file://{file_path}")
+            def play_video(self):
+        file_path = self.entry.get()
+        if file_path:
+            if file_path.startswith(("rtsp://", "http://", "https://")):
+                uri = file_path
+            else:
+                uri = "file://" + file_path
+            try:
+                self.pipeline = Gst.parse_launch(f"playbin uri={uri}")
                 self.pipeline.set_state(Gst.State.PLAYING)
+            except Exception as e:
+                print("GStreamer error:", e)
 
-        # Create video sink (GTK-compatible)
-        self.video_sink = Gst.ElementFactory.make("autovideosink", "video_sink")
-        self.playbin=Gst.ElementFactory.make("playbin","play_pipeline")
-        self.pipeline.set_property("uri", file_path)
+    def start_rtsp(self):
+        video_file = self.entry.get()
+        if video_file:
+            if self.rtsp_process is None:
+                self.rtsp_process = subprocess.Popen([sys.executable, "rtspserver.py", video_file])
+                print("RTSP stream started.")
 
-        # Build Tkinter UI for file selection
-        root = tk.Tk()
-        player=VideoPlayer(root)
-        root.mainloop()
+    def stop_rtsp(self):
+        if self.rtsp_process:
+            self.rtsp_process.terminate()
+            self.rtsp_process = None
+            print("RTSP stream stopped.")
+            
+# Build Tkinter UI for file selection
+root = tk.Tk()
+player=VideoPlayer(root)
+root.mainloop()
